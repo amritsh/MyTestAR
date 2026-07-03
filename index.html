@@ -1,36 +1,72 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
-  <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <meta charset="UTF-8">
+    <title>Gesture Totem</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; position: absolute; top: 0; left: 0; }
+        video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
-<body style="margin: 0px; overflow: hidden;">
-  <a-scene embedded arjs="sourceType: webcam; debugUIEnabled: false;">
-    
-    <a-assets>
-       <img id="grid" src="https://i.imgur.com/mYmmjZt.jpg">
-    </a-assets>
+<body>
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="output_canvas"></canvas>
 
-    <a-marker preset="hiro">
-      
-      <a-entity position="0 0.5 0" 
-                animation="property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear">
-        
-        <a-cylinder position="0 -0.2 0" radius="0.3" height="0.1" color="#FF4444"></a-cylinder>
-        
-        <a-box position="0 0 0" width="0.5" height="0.5" depth="0.5" 
-               material="src: #grid; color: yellow; opacity: 0.9; transparent: true"></a-box>
-        
-        <a-sphere position="0 0.4 0" radius="0.2" color="#4444FF"></a-sphere>
-        
-        <a-torus-knot position="0 0 0" radius="0.6" radius-tubular="0.02" 
-                        animation="property: rotation; to: 360 0 0; loop: true; dur: 3000; easing: linear"
-                        color="#44FF44" material="wireframe: true"></a-torus-knot>
+    <script type="module">
+        import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/vision_bundle.js";
 
-      </a-entity>
+        // 1. Scene Setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('output_canvas'), alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
 
-    </a-marker>
-    <a-entity camera></a-entity>
-  </a-scene>
+        // 2. Create your Totem (The shapes you just used)
+        const totem = new THREE.Group();
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshNormalMaterial());
+        const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.05), new THREE.MeshBasicMaterial({color: 0x0000ff}));
+        sphere.position.y = 0.1;
+        totem.add(box, sphere);
+        totem.visible = false; // Hidden until hand detected
+        scene.add(totem);
+        camera.position.z = 1;
+
+        // 3. MediaPipe Init
+        const vision = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm");
+        const handLandmarker = await HandLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
+            runningMode: "VIDEO", numHands: 1
+        });
+
+        const video = document.getElementById('webcam');
+        navigator.mediaDevices.getUserMedia({ video: true }).then(s => video.srcObject = s);
+
+        // 4. Gesture Detection Loop
+        function render() {
+            if (video.readyState === 4) {
+                const results = handLandmarker.detectForVideo(video, Date.now());
+                if (results.landmarks.length > 0) {
+                    const palm = results.landmarks[0][0]; // Wrist/Palm center
+                    const tip = results.landmarks[0][8];  // Index tip
+                    
+                    // Logic: Distance between palm and tip
+                    const dist = Math.hypot(tip.x - palm.x, tip.y - palm.y);
+                    
+                    totem.visible = true;
+                    // Update totem position based on hand
+                    totem.position.set((palm.x - 0.5) * -2, (palm.y - 0.5) * -2, 0);
+
+                    // Lift animation if fist detected
+                    if (dist < 0.1) totem.position.y += 0.05; 
+                }
+            }
+            renderer.render(scene, camera);
+            requestAnimationFrame(render);
+        }
+        video.onloadeddata = render;
+    </script>
 </body>
 </html>
