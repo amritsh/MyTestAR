@@ -45,27 +45,39 @@
         navigator.mediaDevices.getUserMedia({ video: true }).then(s => video.srcObject = s);
 
         // 4. Gesture Detection Loop
-        function render() {
+                function render() {
             if (video.readyState === 4) {
                 const results = handLandmarker.detectForVideo(video, Date.now());
+                
+                // Clear the canvas
+                const ctx = document.getElementById('output_canvas').getContext('2d');
+                ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+
                 if (results.landmarks.length > 0) {
-                    const palm = results.landmarks[0][0]; // Wrist/Palm center
-                    const tip = results.landmarks[0][8];  // Index tip
+                    const palm = results.landmarks[0][0];
+                    const tip = results.landmarks[0][8];
                     
-                    // Logic: Distance between palm and tip
+                    // 1. Draw a red circle on your palm so you know the AI sees you
+                    ctx.fillStyle = 'red';
+                    ctx.beginPath();
+                    ctx.arc(palm.x * window.innerWidth, palm.y * window.innerHeight, 20, 0, 2 * Math.PI);
+                    ctx.fill();
+
+                    // 2. Logic
                     const dist = Math.hypot(tip.x - palm.x, tip.y - palm.y);
-                    
                     totem.visible = true;
-                    // Update totem position based on hand
+                    // Flip X coordinate because camera is mirrored
                     totem.position.set((palm.x - 0.5) * -2, (palm.y - 0.5) * -2, 0);
 
-                    // Lift animation if fist detected
                     if (dist < 0.1) totem.position.y += 0.05; 
+                } else {
+                    totem.visible = false;
                 }
             }
             renderer.render(scene, camera);
             requestAnimationFrame(render);
-        }
+                }
+        
         video.onloadeddata = render;
     </script>
 </body>
